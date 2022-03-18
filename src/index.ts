@@ -48,28 +48,27 @@ export function newPgInfo(_db: Pool, _dbName: string, logger = console) {
 
   async function _query<TRow = any>(text: string, values: any[] = [], name: string = ''): Promise<TRow[]> {
     let rows: TRow[] = [];
-    let released = false, connErr: any = null, qryErr: any = null;
+    let success = false, qryErr: any = null;
     try {
       const client = await _db.connect();
       try {
         // using prepared + parameterized queries
         const result = await client.query<TRow>({ text, values, name });
-        client.release();
-        released = true;
         rows = result.rows;
+        success = true;
       } catch (err) {
         qryErr = err;
         logger.error(pgMsgDbQueryError, err);
+      } finally {
+        client.release();
       }
-      if (!released) client.release();
     } catch (err) {
-      connErr = err;
       logger.error(pgMsgDbConnError, err);
       throw err;
     }
-    if (connErr) throw connErr;
+    if (success) return rows;
     if (qryErr) throw qryErr;
-    return rows;
+    return rows; // to trick compiler
   }
 
   async function schemata(): Promise<PgSchema[]> {
