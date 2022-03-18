@@ -1,4 +1,4 @@
-# pginfo
+# pgsqlinfo
 
 TypeScript library to work with information schema of PostgreSQL.
 
@@ -39,12 +39,12 @@ npm run test:coverage
 ## Usage
 
 ```sh
-npm i pginfo
+npm i pgsqlinfo
 ```
 
 ```typescript
 import { Pool } from 'pg';
-import { newPgInfo } from 'pginfo';
+import { newPgInfo } from 'pgsqlinfo';
 
 main();
 

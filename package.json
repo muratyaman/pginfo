@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/muratyaman/pginfo.git"
+    "url": "git+https://github.com/muratyaman/pgsqlinfo.git"
   },
   "keywords": [
     "postgresql",
@@ -28,9 +28,9 @@
   "author": "Haci Murat Yaman",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/muratyaman/pginfo/issues"
+    "url": "https://github.com/muratyaman/pgsqlinfo/issues"
   },
-  "homepage": "https://github.com/muratyaman/pginfo#readme",
+  "homepage": "https://github.com/muratyaman/pgsqlinfo#readme",
   "devDependencies": {
     "@types/chai": "^4.3.0",
     "@types/mocha": "^9.1.0",
