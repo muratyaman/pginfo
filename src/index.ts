@@ -67,21 +67,21 @@ export function newPgInfo(_db: Pool, _dbName: string) {
   }
 
   async function schemata(): Promise<ISchema[]> {
-    return _query<ISchema>(sqlSelectSchemata, [_dbName], 'schemata');
+    return _query<PgSchema>(sqlSelectSchemata, [_dbName], 'schemata');
   }
 
   function schema(_schemaName: string) {
     async function tables() {
-      return _query<ITable>(sqlSelectTables, [_dbName, _schemaName], 'tables');
+      return _query<PgTable>(sqlSelectTables, [_dbName, _schemaName], 'tables');
     }
 
     async function columns() {
-      return _query<IColumn>(sqlSelectColumns, [_dbName, _schemaName], 'columns');
+      return _query<PgColumn>(sqlSelectColumns, [_dbName, _schemaName], 'columns');
     }
 
     function table(_tableName: string) {
       async function columns() {
-        return _query<IColumn>(sqlSelectColumnsByTable, [_dbName, _schemaName, _tableName], 'columnsByTable');
+        return _query<PgColumn>(sqlSelectColumnsByTable, [_dbName, _schemaName, _tableName], 'columnsByTable');
       }
       return {
         _db,
@@ -111,7 +111,7 @@ export function newPgInfo(_db: Pool, _dbName: string) {
 }
 
 // @see https://www.postgresql.org/docs/current/infoschema-schemata.html
-export interface ISchema {
+export interface PgSchema {
   catalog_name:                  string | null;
   default_character_set_catalog: string | null;
   default_character_set_name:    string | null;
@@ -122,7 +122,7 @@ export interface ISchema {
 }
 
 // @see https://www.postgresql.org/docs/current/infoschema-tables.html
-export interface ITable {
+export interface PgTable {
   commit_action:                string | null;
   is_insertable_into:           PgYesOrNoEnum | PgYesOrNoType | null;
   is_typed:                     PgYesOrNoEnum | PgYesOrNoType | null;
@@ -138,7 +138,7 @@ export interface ITable {
 }
 
 // @see https://www.postgresql.org/docs/current/infoschema-columns.html
-export interface IColumn {
+export interface PgColumn {
   character_maximum_length: number | null;
   character_octet_length:   number | null;
   character_set_catalog:    string | null;
