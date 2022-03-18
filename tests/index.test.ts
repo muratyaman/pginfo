@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
-import { newPgInfo } from '../src';
+import { PgInfoService } from '../src';
 
 dotenv.config();
 const { PGDATABASE = 'demo' } = process.env;
@@ -10,7 +10,7 @@ describe('newPgInfo', () => {
   const db1 = new Pool(); // relying on correct env settings; see .env.sample
   const db2 = new Pool({ database: 'nodb', password: 'incorrect' });
 
-  const pgInfo = newPgInfo(db1, PGDATABASE);
+  const pgInfo = new PgInfoService(db1, PGDATABASE);
 
   after(async () => {
     await db1.end();
@@ -56,7 +56,7 @@ describe('newPgInfo', () => {
         called++;
       }
     }
-    const pgInfo2 = newPgInfo(db2, 'nodb', logger);
+    const pgInfo2 = new PgInfoService(db2, 'nodb', logger);
     try {
       const _ignore = await pgInfo2.schemata();
     } catch (err) {
@@ -74,9 +74,9 @@ describe('newPgInfo', () => {
         called++;
       }
     }
-    const pgInfo3 = newPgInfo(db1, PGDATABASE, logger);
+    const pgInfo3 = new PgInfoService(db1, PGDATABASE, logger);
     try {
-      const _ignore = await pgInfo3._query('SELECT * FROM no_table');
+      const _ignore = await pgInfo3.query('SELECT * FROM no_table');
     } catch (err) {
       // todo
     }

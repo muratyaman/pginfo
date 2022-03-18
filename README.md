@@ -44,13 +44,13 @@ npm i pgsqlinfo
 
 ```typescript
 import { Pool } from 'pg';
-import { newPgInfo } from 'pgsqlinfo';
+import { PgInfoService } from 'pgsqlinfo';
 
 main();
 
 async function main() {
   const db = new Pool();
-  const pgInfo = newPgInfo(db, PGDATABASE, console);
+  const pgInfo = new PgInfoService(db, PGDATABASE, console);
 
   const schemaRows = await pgInfo.schemata();
   console.log({ schemaRows });

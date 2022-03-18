@@ -1,7 +1,5 @@
 import { Pool } from 'pg';
 
-export type PgInfo = ReturnType<typeof newPgInfo>;
-
 const sqlSelectSchemata = `
   SELECT
     *
@@ -44,13 +42,15 @@ const sqlSelectColumnsByTable = `
 export const pgMsgDbQueryError = 'DB query error';
 export const pgMsgDbConnError  = 'DB connection error';
 
-export function newPgInfo(_db: Pool, _dbName: string, logger = console) {
+export class PgInfoService {
 
-  async function _query<TRow = any>(text: string, values: any[] = [], name: string = ''): Promise<TRow[]> {
+  constructor(protected _db: Pool, public readonly dbName: string, protected logger = console) {}
+
+  async query<TRow = any>(text: string, values: any[] = [], name: string = ''): Promise<TRow[]> {
     let rows: TRow[] = [];
     let success = false, qryErr: any = null;
     try {
-      const client = await _db.connect();
+      const client = await this._db.connect();
       try {
         // using prepared + parameterized queries
         const result = await client.query<TRow>({ text, values, name });
@@ -58,12 +58,12 @@ export function newPgInfo(_db: Pool, _dbName: string, logger = console) {
         success = true;
       } catch (err) {
         qryErr = err;
-        logger.error(pgMsgDbQueryError, err);
+        this.logger.error(pgMsgDbQueryError, err);
       } finally {
         client.release();
       }
     } catch (err) {
-      logger.error(pgMsgDbConnError, err);
+      this.logger.error(pgMsgDbConnError, err);
       throw err;
     }
     if (success) return rows;
@@ -71,52 +71,39 @@ export function newPgInfo(_db: Pool, _dbName: string, logger = console) {
     return rows; // to trick compiler
   }
 
-  async function schemata(): Promise<PgSchema[]> {
-    return _query<PgSchema>(sqlSelectSchemata, [_dbName], 'schemata');
+  async schemata(): Promise<PgSchema[]> {
+    return this.query<PgSchema>(sqlSelectSchemata, [this.dbName], 'schemata');
   }
 
-  function schema(_schemaName: string) {
-
-    async function tables(): Promise<PgTable[]> {
-      return _query<PgTable>(sqlSelectTables, [_dbName, _schemaName], 'tables');
-    }
-
-    async function columns(): Promise<PgColumn[]> {
-      return _query<PgColumn>(sqlSelectColumns, [_dbName, _schemaName], 'columns');
-    }
-
-    function table(_tableName: string) {
-
-      async function columns(): Promise<PgColumn[]> {
-        return _query<PgColumn>(sqlSelectColumnsByTable, [_dbName, _schemaName, _tableName], 'columnsByTable');
-      }
-      return {
-        _db,
-        _dbName,
-        _schemaName,
-        _tableName,
-        columns,
-      };
-    }
-
-    return {
-      _db,
-      _dbName,
-      _schemaName,
-      tables,
-      table,
-      columns,
-    };
+  schema(schemaName: string): PgSchemaService {
+    return new PgSchemaService(this, schemaName);
   }
-
-  return {
-    _db,
-    _dbName,
-    _query,
-    schemata,
-    schema,
-  };
 }
+
+export class PgSchemaService {
+  constructor(protected _pg: PgInfoService, public readonly schemaName: string) {}
+
+  async tables(): Promise<PgTable[]> {
+    return this._pg.query<PgTable>(sqlSelectTables, [this._pg.dbName, this.schemaName], 'tables');
+  }
+
+  async columns(): Promise<PgColumn[]> {
+    return this._pg.query<PgColumn>(sqlSelectColumns, [this._pg.dbName, this.schemaName], 'columns');
+  }
+
+  table(tableName: string) {
+    return new PgTableService(this._pg, this, tableName);
+  }
+}
+
+export class PgTableService {
+  constructor(protected _pg: PgInfoService, protected _pgSchema: PgSchemaService, public readonly tableName: string) {}
+
+  async columns(): Promise<PgColumn[]> {
+    return this._pg.query<PgColumn>(sqlSelectColumnsByTable, [this._pg.dbName, this._pgSchema.schemaName, this.tableName], 'columnsByTable');
+  }
+}
+
 
 // @see https://www.postgresql.org/docs/current/infoschema-schemata.html
 export interface PgSchema {
