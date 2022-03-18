@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, PoolConfig } from 'pg';
 
 const sqlSelectSchemata = `
   SELECT
@@ -43,8 +43,15 @@ export const pgMsgDbQueryError = 'DB query error';
 export const pgMsgDbConnError  = 'DB connection error';
 
 export class PgInfoService {
+  protected _db: Pool;
 
-  constructor(protected _db: Pool, public readonly dbName: string, protected logger = console) {}
+  constructor(protected _dbConfig: PoolConfig, public readonly dbName: string, protected logger = console) {
+    this._db = new Pool(this._dbConfig);
+  }
+
+  async disconnect() {
+    await this._db.end();
+  }
 
   async query<TRow = any>(text: string, values: any[] = [], name: string = ''): Promise<TRow[]> {
     let rows: TRow[] = [];

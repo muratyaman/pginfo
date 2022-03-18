@@ -1,20 +1,16 @@
 import { expect } from 'chai';
 import dotenv from 'dotenv';
-import { Pool } from 'pg';
 import { PgInfoService } from '../src';
 
 dotenv.config();
 const { PGDATABASE = 'demo' } = process.env;
 
 describe('newPgInfo', () => {
-  const db1 = new Pool(); // relying on correct env settings; see .env.sample
-  const db2 = new Pool({ database: 'nodb', password: 'incorrect' });
-
-  const pgInfo = new PgInfoService(db1, PGDATABASE);
+  // relying on correct env settings; see .env.sample
+  const pgInfo = new PgInfoService({}, PGDATABASE);
 
   after(async () => {
-    await db1.end();
-    await db2.end();
+    await pgInfo.disconnect();
   });
   
   it('should get schemata', async() => {
@@ -56,12 +52,13 @@ describe('newPgInfo', () => {
         called++;
       }
     }
-    const pgInfo2 = new PgInfoService(db2, 'nodb', logger);
+    const pgInfo2 = new PgInfoService({ database: 'nodb', password: 'incorrect' }, 'nodb', logger);
     try {
       const _ignore = await pgInfo2.schemata();
     } catch (err) {
       // todo
     }
+    pgInfo2.disconnect();
     expect(called).to.eq(1);
   });
 
@@ -74,12 +71,13 @@ describe('newPgInfo', () => {
         called++;
       }
     }
-    const pgInfo3 = new PgInfoService(db1, PGDATABASE, logger);
+    const pgInfo3 = new PgInfoService({}, PGDATABASE, logger);
     try {
       const _ignore = await pgInfo3.query('SELECT * FROM no_table');
     } catch (err) {
       // todo
     }
+    pgInfo3.disconnect();
     expect(called).to.eq(1);
   });
 
