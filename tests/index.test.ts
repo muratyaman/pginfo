@@ -74,7 +74,7 @@ describe('newPgInfo', () => {
         called++;
       }
     }
-    const pgInfo3 = newPgInfo(db, PGDATABASE, logger);
+    const pgInfo3 = newPgInfo(db1, PGDATABASE, logger);
     try {
       const _ignore = await pgInfo3._query('SELECT * FROM no_table');
     } catch (err) {
