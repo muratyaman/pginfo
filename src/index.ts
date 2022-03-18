@@ -6,7 +6,7 @@ const sqlSelectSchemata = `
   SELECT
     *
   FROM information_schema.schemata
-  WHERE catalog_name = ?
+  WHERE catalog_name = $1
     AND schema_name <> 'information_schema'
     AND schema_name NOT LIKE 'pg_%'
   ORDER BY schema_name;
@@ -16,8 +16,8 @@ const sqlSelectTables = `
   SELECT
     *
   FROM information_schema.tables
-  WHERE table_catalog = ?
-    AND table_schema = ?
+  WHERE table_catalog = $1
+    AND table_schema = $2
     AND table_type = 'BASE TABLE'
   ORDER BY table_schema, table_name;
 `;
@@ -26,61 +26,69 @@ const sqlSelectColumns = `
   SELECT
     *
   FROM information_schema.columns
-  WHERE table_catalog = ?
-    AND table_schema = ?
-  ORDER BY schema_name, table_name, column_name
+  WHERE table_catalog = $1
+    AND table_schema = $2
+  ORDER BY table_schema, table_name, column_name
 `;
 
 const sqlSelectColumnsByTable = `
   SELECT
     *
   FROM information_schema.columns
-  WHERE table_catalog = ?
-    AND table_schema = ?
-    AND table_name = ?
-  ORDER BY schema_name, table_name, column_name
+  WHERE table_catalog = $1
+    AND table_schema = $2
+    AND table_name = $3
+  ORDER BY table_schema, table_name, column_name
 `;
 
-export function newPgInfo(_db: Pool, _dbName: string) {
+export const pgMsgDbQueryError = 'DB query error';
+export const pgMsgDbConnError  = 'DB connection error';
 
-  async function _query<TRow = any>(text: string, values: any[], name: string): Promise<TRow[]> {
+export function newPgInfo(_db: Pool, _dbName: string, logger = console) {
+
+  async function _query<TRow = any>(text: string, values: any[] = [], name: string = ''): Promise<TRow[]> {
     let rows: TRow[] = [];
+    let released = false, connErr: any = null, qryErr: any = null;
     try {
       const client = await _db.connect();
-      let released = false;
       try {
         // using prepared + parameterized queries
         const result = await client.query<TRow>({ text, values, name });
         client.release();
         released = true;
         rows = result.rows;
-        return rows;
       } catch (err) {
-        console.error('DB query error', err);
+        qryErr = err;
+        logger.error(pgMsgDbQueryError, err);
       }
       if (!released) client.release();
     } catch (err) {
-      console.error('DB connection error', err);
+      connErr = err;
+      logger.error(pgMsgDbConnError, err);
       throw err;
     }
+    if (connErr) throw connErr;
+    if (qryErr) throw qryErr;
     return rows;
   }
 
-  async function schemata(): Promise<ISchema[]> {
+  async function schemata(): Promise<PgSchema[]> {
     return _query<PgSchema>(sqlSelectSchemata, [_dbName], 'schemata');
   }
 
   function schema(_schemaName: string) {
-    async function tables() {
+
+    async function tables(): Promise<PgTable[]> {
       return _query<PgTable>(sqlSelectTables, [_dbName, _schemaName], 'tables');
     }
 
-    async function columns() {
+    async function columns(): Promise<PgColumn[]> {
       return _query<PgColumn>(sqlSelectColumns, [_dbName, _schemaName], 'columns');
     }
 
     function table(_tableName: string) {
-      async function columns() {
+
+      async function columns(): Promise<PgColumn[]> {
         return _query<PgColumn>(sqlSelectColumnsByTable, [_dbName, _schemaName, _tableName], 'columnsByTable');
       }
       return {
@@ -105,6 +113,7 @@ export function newPgInfo(_db: Pool, _dbName: string) {
   return {
     _db,
     _dbName,
+    _query,
     schemata,
     schema,
   };
