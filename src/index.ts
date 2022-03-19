@@ -12,7 +12,8 @@ const sqlSelectSchemata = `
 
 const sqlSelectTables = `
   SELECT
-    *
+    *,
+    obj_description((table_schema || '.' || table_name)::regclass) AS table_comment
   FROM information_schema.tables
   WHERE table_catalog = $1
     AND table_schema = $2
@@ -22,11 +23,12 @@ const sqlSelectTables = `
 
 const sqlSelectColumns = `
   SELECT
-    *
+    *,
+    col_description(((table_schema || '.' || table_name)::regclass)::oid, ordinal_position) AS column_comment
   FROM information_schema.columns
   WHERE table_catalog = $1
     AND table_schema = $2
-  ORDER BY table_schema, table_name, column_name
+  ORDER BY table_name, column_name
 `;
 
 const sqlSelectColumnsByTable = `
@@ -36,7 +38,7 @@ const sqlSelectColumnsByTable = `
   WHERE table_catalog = $1
     AND table_schema = $2
     AND table_name = $3
-  ORDER BY table_schema, table_name, column_name
+  ORDER BY column_name
 `;
 
 export const pgMsgDbQueryError = 'DB query error';
@@ -55,27 +57,26 @@ export class PgInfoService {
 
   async query<TRow = any>(text: string, values: any[] = [], name: string = ''): Promise<TRow[]> {
     let rows: TRow[] = [];
-    let success = false, qryErr: any = null;
+    let dbErr: any = null;
     try {
       const client = await this._db.connect();
       try {
         // using prepared + parameterized queries
         const result = await client.query<TRow>({ text, values, name });
         rows = result.rows;
-        success = true;
       } catch (err) {
-        qryErr = err;
+        dbErr = err;
         this.logger.error(pgMsgDbQueryError, err);
       } finally {
         client.release();
       }
     } catch (err) {
+      dbErr = err;
       this.logger.error(pgMsgDbConnError, err);
       throw err;
     }
-    if (success) return rows;
-    if (qryErr) throw qryErr;
-    return rows; // to trick compiler
+    if (dbErr) throw dbErr;
+    return rows;
   }
 
   async schemata(): Promise<PgSchema[]> {
@@ -136,7 +137,12 @@ export interface PgTable {
   table_type:                   PgTableTypeEnum | PgTableTypeType | null;
   user_defined_type_catalog:    string | null;
   user_defined_type_name:       string | null;
-  user_defined_type_schema:     string | null;  
+  user_defined_type_schema:     string | null;
+
+  /**
+   * artificial property dynamically retrieves comment
+   */
+  table_comment: string | null;
 }
 
 // @see https://www.postgresql.org/docs/current/infoschema-columns.html
@@ -185,6 +191,11 @@ export interface PgColumn {
   udt_catalog:              string | null;
   udt_name:                 PgUdtNameEnum | PgUdtNameType | string | null;
   udt_schema:               string | null;
+
+  /**
+   * artificial property dynamically retrieves comment
+   */
+  column_comment: string | null;
 }
 
 export type PgTableTypeType = 'BASE TABLE' | 'VIEW' | 'FOREIGN' | 'LOCAL TEMPORARY';
@@ -208,166 +219,246 @@ export enum PgYesOrNoEnum {
 }
 
 export enum PgDataTypeEnum {
-  char                        = 'char',
-  anyarray                    = 'anyarray',
-  ARRAY                       = 'ARRAY',
-  bigint                      = 'bigint',
-  boolean                     = 'boolean',
-  bytea                       = 'bytea',
-  character_varying           = 'character varying',
-  date                        = 'date',
-  double_precision            = 'double precision',
-  inet                        = 'inet',
-  integer                     = 'integer',
-  interval                    = 'interval',
-  json                        = 'json',
-  jsonb                       = 'jsonb',
-  name                        = 'name',
-  numeric                     = 'numeric',
-  oid                         = 'oid',
-  pg_dependencies             = 'pg_dependencies',
-  pg_lsn                      = 'pg_lsn',
-  pg_mcv_list                 = 'pg_mcv_list',
-  pg_ndistinct                = 'pg_ndistinct',
-  pg_node_tree                = 'pg_node_tree',
-  real                        = 'real',
-  regproc                     = 'regproc',
-  regtype                     = 'regtype',
-  smallint                    = 'smallint',
-  text                        = 'text',
-  timestamp_with_time_zone    = 'timestamp with time zone',
-  tsz                         = 'timestamp with time zone', // alias
+  char = 'char',
+  anyarray = 'anyarray',
+  ARRAY = 'ARRAY',
+  bigint = 'bigint',
+  bit = 'bit',
+  bit_varying = 'bit varying',
+  boolean = 'boolean',
+  box = 'box',
+  bytea = 'bytea',
+  character = 'character',
+  character_varying = 'character varying',
+  cidr = 'cidr',
+  circle = 'circle',
+  date = 'date',
+  double_precision = 'double precision',
+  inet = 'inet',
+  integer = 'integer',
+  interval = 'interval',
+  json = 'json',
+  jsonb = 'jsonb',
+  line = 'line',
+  lseg = 'lseg',
+  macaddr = 'macaddr',
+  macaddr8 = 'macaddr8',
+  money = 'money',
+  name = 'name',
+  numeric = 'numeric',
+  oid = 'oid',
+  path = 'path',
+  pg_dependencies = 'pg_dependencies',
+  pg_lsn = 'pg_lsn',
+  pg_mcv_list = 'pg_mcv_list',
+  pg_ndistinct = 'pg_ndistinct',
+  pg_node_tree = 'pg_node_tree',
+  point = 'point',
+  polygon = 'polygon',
+  real = 'real',
+  regproc = 'regproc',
+  regtype = 'regtype',
+  smallint = 'smallint',
+  text = 'text',
+  time_with_time_zone = 'time with time zone',
+  time_without_time_zone = 'time without time zone',
+  timestamp_with_time_zone = 'timestamp with time zone',
   timestamp_without_time_zone = 'timestamp without time zone',
-  ts                          = 'timestamp without time zone', // alias
-  USER_DEFINED                = 'USER-DEFINED',
-  uuid                        = 'uuid',
-  xid                         = 'xid',
+  tsquery = 'tsquery',
+  tsvector = 'tsvector',
+  txid_snapshot = 'txid_snapshot',
+  uuid = 'uuid',
+  xid = 'xid',
+  xml = 'xml',
 }
 
 export type PgDataTypeType =
-  'char' |
-  'anyarray' |
-  'ARRAY' |
-  'bigint' |
-  'boolean' |
-  'bytea' |
-  'character varying' |
-  'date' |
-  'double precision' |
-  'inet' |
-  'integer' |
-  'interval' |
-  'json' |
-  'jsonb' |
-  'name' |
-  'numeric' |
-  'oid' |
-  'pg_dependencies' |
-  'pg_lsn' |
-  'pg_mcv_list' |
-  'pg_ndistinct' |
-  'pg_node_tree' |
-  'real' |
-  'regproc' |
-  'regtype' |
-  'smallint' |
-  'text' |
-  'timestamp with time zone' |
-  'timestamp without time zone' |
-  'USER-DEFINED' |
-  'uuid' |
-  'xid'
+  | 'char'
+  | 'anyarray'
+  | 'ARRAY'
+  | 'bigint'
+  | 'bit'
+  | 'bit varying'
+  | 'boolean'
+  | 'box'
+  | 'bytea'
+  | 'character'
+  | 'character varying'
+  | 'cidr'
+  | 'circle'
+  | 'date'
+  | 'double precision'
+  | 'inet'
+  | 'integer'
+  | 'interval'
+  | 'json'
+  | 'jsonb'
+  | 'line'
+  | 'lseg'
+  | 'macaddr'
+  | 'macaddr8'
+  | 'money'
+  | 'name'
+  | 'numeric'
+  | 'oid'
+  | 'path'
+  | 'pg_dependencies'
+  | 'pg_lsn'
+  | 'pg_mcv_list'
+  | 'pg_ndistinct'
+  | 'pg_node_tree'
+  | 'point'
+  | 'polygon'
+  | 'real'
+  | 'regproc'
+  | 'regtype'
+  | 'smallint'
+  | 'text'
+  | 'time with time zone'
+  | 'time without time zone'
+  | 'timestamp with time zone'
+  | 'timestamp without time zone'
+  | 'tsquery'
+  | 'tsvector'
+  | 'txid_snapshot'
+  | 'uuid'
+  | 'xid'
+  | 'xml'
 ;
 
 // Enum for default User-Defined Types in pg_catalog
 export enum PgUdtNameEnum {
-  anyarray       = 'anyarray',
-  bool            = 'bool',
-  bytea           = 'bytea',
-  char            = 'char',
-  date            = 'date',
-  float4          = 'float4',
-  float8          = 'float8',
-  inet            = 'inet',
-  int2            = 'int2',
-  int2vector      = 'int2vector',
-  int4            = 'int4',
-  int8            = 'int8',
-  interval        = 'interval',
-  json            = 'json',
-  jsonb           = 'jsonb',
-  name            = 'name',
-  numeric         = 'numeric',
-  oid             = 'oid',
-  oidvector       = 'oidvector',
+  _aclitem = '_aclitem',
+  _bool = '_bool',
+  _char = '_char',
+  _float4 = '_float4',
+  _float8 = '_float8',
+  _int2 = '_int2',
+  _int4 = '_int4',
+  _name = '_name',
+  _oid = '_oid',
+  _pg_statistic = '_pg_statistic',
+  _regtype = '_regtype',
+  _text = '_text',
+  _varchar = '_varchar',
+  anyarray = 'anyarray',
+  bit = 'bit',
+  bool = 'bool',
+  box = 'box',
+  bpchar = 'bpchar',
+  bytea = 'bytea',
+  char = 'char',
+  cidr = 'cidr',
+  circle = 'circle',
+  date = 'date',
+  float4 = 'float4',
+  float8 = 'float8',
+  inet = 'inet',
+  int2 = 'int2',
+  int2vector = 'int2vector',
+  int4 = 'int4',
+  int8 = 'int8',
+  interval = 'interval',
+  json = 'json',
+  jsonb = 'jsonb',
+  line = 'line',
+  lseg = 'lseg',
+  macaddr = 'macaddr',
+  macaddr8 = 'macaddr8',
+  money = 'money',
+  name = 'name',
+  numeric = 'numeric',
+  oid = 'oid',
+  oidvector = 'oidvector',
+  path = 'path',
   pg_dependencies = 'pg_dependencies',
-  pg_lsn          = 'pg_lsn',
-  pg_mcv_list     = 'pg_mcv_list',
-  pg_ndistinct    = 'pg_ndistinct',
-  pg_node_tree    = 'pg_node_tree',
-  regproc         = 'regproc',
-  regtype         = 'regtype',
-  text            = 'text',
-  timestamp       = 'timestamp',
-  timestamptz     = 'timestamptz',
-  uuid            = 'uuid',
-  varchar         = 'varchar',
-  xid             = 'xid',
-  _aclitem        = '_aclitem',
-  _bool           = '_bool',
-  _char           = '_char',
-  _float4         = '_float4',
-  _float8         = '_float8',
-  _int2           = '_int2',
-  _name           = '_name',
-  _oid            = '_oid',
-  _regtype        = '_regtype',
-  _text           = '_text',
-  _varchar        = '_varchar',
+  pg_lsn = 'pg_lsn',
+  pg_mcv_list = 'pg_mcv_list',
+  pg_ndistinct = 'pg_ndistinct',
+  pg_node_tree = 'pg_node_tree',
+  point = 'point',
+  polygon = 'polygon',
+  regproc = 'regproc',
+  regtype = 'regtype',
+  text = 'text',
+  time = 'time',
+  timestamp = 'timestamp',
+  timestamptz = 'timestamptz',
+  timetz = 'timetz',
+  tsquery = 'tsquery',
+  tsvector = 'tsvector',
+  txid_snapshot = 'txid_snapshot',
+  uuid = 'uuid',
+  varbit = 'varbit',
+  varchar = 'varchar',
+  xid = 'xid',
+  xml = 'xml',
 }
 
-export type PgUdtNameType = 
-  'anyarray' |
-  'bool' |
-  'bytea' |
-  'char' |
-  'date' |
-  'float4' |
-  'float8' |
-  'inet' |
-  'int2' |
-  'int2vector' |
-  'int4' |
-  'int8' |
-  'interval' |
-  'json' |
-  'jsonb' |
-  'name' |
-  'numeric' |
-  'oid' |
-  'oidvector' |
-  'pg_dependencies' |
-  'pg_lsn' |
-  'pg_mcv_list' |
-  'pg_ndistinct' |
-  'pg_node_tree' |
-  'regproc' |
-  'regtype' |
-  'text' |
-  'timestamp' |
-  'timestamptz' |
-  'uuid' |
-  'varchar' |
-  'xid' |
-  '_aclitem' |
-  '_bool' |
-  '_char' |
-  '_float4' |
-  '_float8' |
-  '_int2' |
-  '_name' |
-  '_oid' |
-  '_regtype' |
-  '_text' |
-  '_varchar'
+export type PgUdtNameType =
+  | '_aclitem'
+  | '_bool'
+  | '_char'
+  | '_float4'
+  | '_float8'
+  | '_int2'
+  | '_int4'
+  | '_name'
+  | '_oid'
+  | '_pg_statistic'
+  | '_regtype'
+  | '_text'
+  | '_varchar'
+  | 'anyarray'
+  | 'bit'
+  | 'bool'
+  | 'box'
+  | 'bpchar'
+  | 'bytea'
+  | 'char'
+  | 'cidr'
+  | 'circle'
+  | 'date'
+  | 'float4'
+  | 'float8'
+  | 'inet'
+  | 'int2'
+  | 'int2vector'
+  | 'int4'
+  | 'int8'
+  | 'interval'
+  | 'json'
+  | 'jsonb'
+  | 'line'
+  | 'lseg'
+  | 'macaddr'
+  | 'macaddr8'
+  | 'money'
+  | 'name'
+  | 'numeric'
+  | 'oid'
+  | 'oidvector'
+  | 'path'
+  | 'pg_dependencies'
+  | 'pg_lsn'
+  | 'pg_mcv_list'
+  | 'pg_ndistinct'
+  | 'pg_node_tree'
+  | 'point'
+  | 'polygon'
+  | 'regproc'
+  | 'regtype'
+  | 'text'
+  | 'time'
+  | 'timestamp'
+  | 'timestamptz'
+  | 'timetz'
+  | 'tsquery'
+  | 'tsvector'
+  | 'txid_snapshot'
+  | 'uuid'
+  | 'varbit'
+  | 'varchar'
+  | 'xid'
+  | 'xml'
 ;
