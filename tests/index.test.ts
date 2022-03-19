@@ -28,6 +28,12 @@ describe('newPgInfo', () => {
     expect(!!usersTableRow).to.eq(true);
   });
 
+  it('should get columns for all user defined types in public schema', async() => {
+    const schema = pgInfo.schema('public');
+    const udtRows = await schema.userDefinedTypes();
+    expect(udtRows.length > 0).to.eq(true);
+  });
+
   it('should get columns for all tables in public schema', async() => {
     const schema = pgInfo.schema('public');
     const columnRows = await schema.columns();

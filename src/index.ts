@@ -1,44 +1,53 @@
 import { Pool, PoolConfig } from 'pg';
 
 const sqlSelectSchemata = `
-  SELECT
-    *
-  FROM information_schema.schemata
-  WHERE catalog_name = $1
-    AND schema_name <> 'information_schema'
-    AND schema_name NOT LIKE 'pg_%'
-  ORDER BY schema_name;
+SELECT
+  *
+FROM information_schema.schemata
+WHERE catalog_name = $1
+  AND schema_name <> 'information_schema'
+  AND schema_name NOT LIKE 'pg_%'
+ORDER BY schema_name;
+`;
+
+const sqlSelectUserDefinedTypes = `
+SELECT
+*
+FROM information_schema.user_defined_types
+WHERE user_defined_type_catalog = $1
+  AND user_defined_type_schema = $2
+ORDER BY user_defined_type_name
 `;
 
 const sqlSelectTables = `
-  SELECT
-    *,
-    obj_description((table_schema || '.' || table_name)::regclass) AS table_comment
-  FROM information_schema.tables
-  WHERE table_catalog = $1
-    AND table_schema = $2
-    AND table_type = 'BASE TABLE'
-  ORDER BY table_schema, table_name;
+SELECT
+  *,
+  obj_description((table_schema || '.' || table_name)::regclass) AS table_comment
+FROM information_schema.tables
+WHERE table_catalog = $1
+  AND table_schema = $2
+  AND table_type = 'BASE TABLE'
+ORDER BY table_schema, table_name;
 `;
 
 const sqlSelectColumns = `
-  SELECT
-    *,
-    col_description(((table_schema || '.' || table_name)::regclass)::oid, ordinal_position) AS column_comment
-  FROM information_schema.columns
-  WHERE table_catalog = $1
-    AND table_schema = $2
-  ORDER BY table_name, column_name
+SELECT
+  *,
+  col_description(((table_schema || '.' || table_name)::regclass)::oid, ordinal_position) AS column_comment
+FROM information_schema.columns
+WHERE table_catalog = $1
+  AND table_schema = $2
+ORDER BY table_name, column_name
 `;
 
 const sqlSelectColumnsByTable = `
-  SELECT
-    *
-  FROM information_schema.columns
-  WHERE table_catalog = $1
-    AND table_schema = $2
-    AND table_name = $3
-  ORDER BY column_name
+SELECT
+  *
+FROM information_schema.columns
+WHERE table_catalog = $1
+  AND table_schema = $2
+  AND table_name = $3
+ORDER BY column_name
 `;
 
 export const pgMsgDbQueryError = 'DB query error';
@@ -91,6 +100,10 @@ export class PgInfoService {
 export class PgSchemaService {
   constructor(protected _pg: PgInfoService, public readonly schemaName: string) {}
 
+  async userDefinedTypes(): Promise<PgUserDefinedType[]> {
+    return this._pg.query<PgUserDefinedType>(sqlSelectUserDefinedTypes, [this._pg.dbName, this.schemaName], 'userDefinedTypes');
+  }
+
   async tables(): Promise<PgTable[]> {
     return this._pg.query<PgTable>(sqlSelectTables, [this._pg.dbName, this.schemaName], 'tables');
   }
@@ -127,14 +140,14 @@ export interface PgSchema {
 // @see https://www.postgresql.org/docs/current/infoschema-tables.html
 export interface PgTable {
   commit_action:                string | null;
-  is_insertable_into:           PgYesOrNoEnum | PgYesOrNoType | null;
-  is_typed:                     PgYesOrNoEnum | PgYesOrNoType | null;
+  is_insertable_into:           PgYesOrNoEnum | PgYesOrNoType | string | null;
+  is_typed:                     PgYesOrNoEnum | PgYesOrNoType | string | null;
   reference_generation:         string | null;
   self_referencing_column_name: string | null;
   table_catalog:                string | null;
   table_name:                   string | null;
   table_schema:                 string | null;
-  table_type:                   PgTableTypeEnum | PgTableTypeType | null;
+  table_type:                   PgTableTypeEnum | PgTableTypeType | string | null;
   user_defined_type_catalog:    string | null;
   user_defined_type_name:       string | null;
   user_defined_type_schema:     string | null;
@@ -173,10 +186,10 @@ export interface PgColumn {
   interval_precision:       number | null;
   interval_type:            string | null;
   is_generated:             PgAlwaysOrNeverType | null;
-  is_identity:              PgYesOrNoEnum | PgYesOrNoType | null;
-  is_nullable:              PgYesOrNoEnum | PgYesOrNoType | null;
-  is_self_referencing:      PgYesOrNoEnum | PgYesOrNoType | null;
-  is_updatable:             PgYesOrNoEnum | PgYesOrNoType | null;
+  is_identity:              PgYesOrNoEnum | PgYesOrNoType | string | null;
+  is_nullable:              PgYesOrNoEnum | PgYesOrNoType | string | null;
+  is_self_referencing:      PgYesOrNoEnum | PgYesOrNoType | string | null;
+  is_updatable:             PgYesOrNoEnum | PgYesOrNoType | string | null;
   maximum_cardinality:      number | null;
   numeric_precision:        number | null;
   numeric_precision_radix:  number | null;
@@ -196,6 +209,39 @@ export interface PgColumn {
    * artificial property dynamically retrieves comment
    */
   column_comment: string | null;
+}
+
+// @see https://www.postgresql.org/docs/current/infoschema-user-defined-types.html
+export interface PgUserDefinedType {
+  character_maximum_length:   number | null;
+  character_octet_length:     number | null;
+  character_set_catalog:      string | null;
+  character_set_name:         string | null;
+  character_set_schema:       string | null;
+  collation_catalog:          string | null;
+  collation_name:             string | null;
+  collation_schema:           string | null;
+  data_type:                  string | null;
+  datetime_precision:         number | null;
+  interval_precision:         number | null;
+  interval_type:              string | null;
+  is_final:                   string | null; // max 3
+  is_instantiable:            PgYesOrNoEnum | PgYesOrNoType | string | null; // max 3
+  numeric_precision:          number | null;
+  numeric_precision_radix:    number | null;
+  numeric_scale:              number | null;
+  ordering_category:          string | null;
+  ordering_form:              string | null;
+  ordering_routine_catalog:   string | null;
+  ordering_routine_name:      string | null;
+  ordering_routine_schema:    string | null;
+  ref_dtd_identifier:         string | null;
+  reference_type:             string | null;
+  source_dtd_identifier:      string | null;
+  user_defined_type_catalog:  string | null;
+  user_defined_type_category: 'STRUCTURED' | string | null; // Currently always 'STRUCTURED'
+  user_defined_type_name:     string | null;
+  user_defined_type_schema:   string | null;
 }
 
 export type PgTableTypeType = 'BASE TABLE' | 'VIEW' | 'FOREIGN' | 'LOCAL TEMPORARY';

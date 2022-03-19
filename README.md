@@ -4,9 +4,11 @@ TypeScript library to work with information schema of PostgreSQL.
 
 TypeScript models have been prepared based on the following links:
 
+* https://www.postgresql.org/docs/current/information-schema.html
 * https://www.postgresql.org/docs/current/infoschema-schemata.html
 * https://www.postgresql.org/docs/current/infoschema-tables.html
 * https://www.postgresql.org/docs/current/infoschema-columns.html
+* https://www.postgresql.org/docs/current/infoschema-user-defined-types.html
 
 such as:
 
