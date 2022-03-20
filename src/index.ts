@@ -22,7 +22,7 @@ ORDER BY schema_name;
 const sqlSelectTables = `
 SELECT
   *,
-  obj_description((table_schema || '."' || table_name || '"')::regclass) AS table_comment
+  obj_description(((table_schema || '."' || table_name || '"')::regclass)::oid) AS table_comment
 FROM information_schema.tables
 WHERE table_catalog = $1
   AND table_schema = $2
