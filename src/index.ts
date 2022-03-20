@@ -29,20 +29,23 @@ WHERE table_catalog = $1
 ORDER BY table_schema, table_name;
 `;
 
+const sqlSelectTablesWithArrayColumns = `
+SELECT relname AS table_name, attname AS column_name, attndims AS array_dimension
+FROM pg_class c
+JOIN pg_namespace s ON c.relnamespace = s.oid
+JOIN pg_attribute a ON c.oid = attrelid 
+  AND a.attndims > 0 -- array
+  AND a.attnum > 0 -- not system column
+JOIN pg_type t ON t.oid = atttypid
+WHERE c.relkind = 'r' AND s.nspname = $1
+`;
+
 const sqlSelectColumns = `
 SELECT
   cols.*,
   col_description(((cols.table_schema || '.' || cols.table_name)::regclass)::oid, ordinal_position) AS column_comment,
-  arr.array_dimension
+  null AS array_dimension -- to be appended
 FROM information_schema.columns AS cols
-LEFT JOIN (
-  SELECT c.relname AS table_name, a.attname AS column_name, attndims AS array_dimension
-  FROM pg_class     c
-  JOIN pg_namespace s ON c.relnamespace = s.oid
-  JOIN pg_attribute a on c.oid = attrelid AND a.attndims > 0
-  JOIN pg_type      t on t.oid = atttypid
-  WHERE c.relkind = 'r' AND s.nspname = $2
-) AS arr ON arr.table_name = cols.table_name AND cols.column_name = arr.column_name
 WHERE cols.table_catalog = $1
   AND cols.table_schema = $2
 ORDER BY cols.table_name, cols.column_name
@@ -52,16 +55,8 @@ const sqlSelectColumnsByTable = `
 SELECT
   cols.*,
   col_description(((cols.table_schema || '.' || cols.table_name)::regclass)::oid, ordinal_position) AS column_comment,
-  arr.array_dimension
+  null AS array_dimension -- to be appended
 FROM information_schema.columns AS cols
-LEFT JOIN (
-  SELECT c.relname AS table_name, a.attname AS column_name, a.attndims AS array_dimension
-  FROM pg_class     c
-  JOIN pg_namespace s ON c.relnamespace = s.oid
-  JOIN pg_attribute a on c.oid = attrelid AND a.attndims > 0
-  JOIN pg_type      t on t.oid = atttypid
-  WHERE c.relkind = 'r' AND s.nspname = $2 AND c.relname = $3
-) AS arr ON arr.table_name = cols.table_name AND cols.column_name = arr.column_name
 WHERE cols.table_catalog = $1
   AND cols.table_schema = $2
   AND cols.table_name = $3
@@ -179,15 +174,32 @@ export class PgSchemaService {
   }
 
   async columns(): Promise<PgColumn[]> {
-    return this._pg.query<PgColumn>(sqlSelectColumns, [this._pg.dbName, this.schemaName], 'columns');
+    const colRecords = await this._pg.query<PgColumn>(sqlSelectColumns, [this._pg.dbName, this.schemaName], 'columns');
+    const arrInfoRecords = await this.arrayColumns();
+    this.appendArrayDimension(colRecords, arrInfoRecords);
+    return colRecords;
   }
-
+  
   async attributes(): Promise<PgAttribute[]> {
     return this._pg.query<PgAttribute>(sqlSelectAttributes, [this._pg.dbName, this.schemaName], 'attributes');
+  }
+  
+  async arrayColumns(): Promise<PgTableArrayColumn[]> {
+    return this._pg.query<PgTableArrayColumn>(sqlSelectTablesWithArrayColumns, [this.schemaName], 'arrayColumns');
   }
 
   table(tableName: string) {
     return new PgTableService(this._pg, this, tableName);
+  }
+
+  // this has side-effect on colRecords
+  appendArrayDimension(colRecords: PgColumn[], arrInfoRecords: PgTableArrayColumn[]) {
+    for (const arrInfoRecord of arrInfoRecords) {
+      const colRecord = colRecords.find(c => c.table_name === arrInfoRecord.table_name && c.column_name === arrInfoRecord.column_name);
+      if (colRecord) { // in reality arrInfoRecords is a subset of colRecords
+        colRecord.array_dimension = arrInfoRecord.array_dimension;
+      }
+    }
   }
 }
 
@@ -195,7 +207,10 @@ export class PgTableService {
   constructor(protected _pg: PgInfoService, protected _pgSchema: PgSchemaService, public readonly tableName: string) {}
 
   async columns(): Promise<PgColumn[]> {
-    return this._pg.query<PgColumn>(sqlSelectColumnsByTable, [this._pg.dbName, this._pgSchema.schemaName, this.tableName], 'columnsByTable');
+    const colRecords = await this._pg.query<PgColumn>(sqlSelectColumnsByTable, [this._pg.dbName, this._pgSchema.schemaName, this.tableName], 'columnsByTable');
+    const arrInfoRecords = await this._pgSchema.arrayColumns();
+    this._pgSchema.appendArrayDimension(colRecords, arrInfoRecords);
+    return colRecords;
   }
 }
 
@@ -286,7 +301,13 @@ export interface PgColumn {
   /**
    * artificial property dynamically retrieves array dimension if data_type is 'ARRAY'
    */
-  array_dimension: number | null;
+  array_dimension?: number | null;
+}
+
+export interface PgTableArrayColumn {
+  table_name: string;
+  column_name: string;
+  array_dimension: number;
 }
 
 // @see https://www.postgresql.org/docs/current/infoschema-domains.html
