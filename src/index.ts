@@ -31,22 +31,39 @@ ORDER BY table_schema, table_name;
 
 const sqlSelectColumns = `
 SELECT
-  *,
-  col_description(((table_schema || '.' || table_name)::regclass)::oid, ordinal_position) AS column_comment
-FROM information_schema.columns
-WHERE table_catalog = $1
-  AND table_schema = $2
-ORDER BY table_name, column_name
+  cols.*,
+  col_description(((table_schema || '.' || table_name)::regclass)::oid, ordinal_position) AS column_comment,
+  arr.array_dimension
+FROM information_schema.columns AS cols
+LEFT JOIN (
+  SELECT c.oid, attname AS column_name, attndims AS array_dimension
+  FROM pg_class     c
+  JOIN pg_attribute a ON c.oid = attrelid
+  JOIN pg_type      t on t.oid = atttypid
+  WHERE attndims > 0
+) AS arr ON arr.oid = (cols.table_name)::regclass AND cols.column_name = arr.column_name
+WHERE cols.table_catalog = $1
+  AND cols.table_schema = $2
+ORDER BY cols.table_name, cols.column_name
 `;
 
 const sqlSelectColumnsByTable = `
 SELECT
-  *
-FROM information_schema.columns
+  cols.*,
+  col_description(((table_schema || '.' || table_name)::regclass)::oid, ordinal_position) AS column_comment,
+  arr.array_dimension
+FROM information_schema.columns AS cols
+LEFT JOIN (
+  SELECT c.oid, attname AS column_name, attndims AS array_dimension
+  FROM pg_class     c
+  JOIN pg_attribute a ON c.oid = attrelid
+  JOIN pg_type      t on t.oid = atttypid
+  WHERE attndims > 0
+) AS arr ON arr.oid = (cols.table_name)::regclass AND cols.column_name = arr.column_name
 WHERE table_catalog = $1
   AND table_schema = $2
   AND table_name = $3
-ORDER BY column_name
+ORDER BY cols.column_name
 `;
 
 const sqlSelectDomains = `
@@ -264,6 +281,10 @@ export interface PgColumn {
    * artificial property dynamically retrieves comment
    */
   column_comment: string | null;
+  /**
+   * artificial property dynamically retrieves array dimension if data_type is 'ARRAY'
+   */
+  array_dimension: number | null;
 }
 
 // @see https://www.postgresql.org/docs/current/infoschema-domains.html
@@ -441,7 +462,7 @@ export enum PgYesOrNoEnum {
 }
 
 export enum PgDataTypeEnum {
-  char = 'char',
+  char = '"char"',
   anyarray = 'anyarray',
   ARRAY = 'ARRAY',
   bigint = 'bigint',
@@ -495,7 +516,7 @@ export enum PgDataTypeEnum {
 }
 
 export type PgDataTypeType =
-  | 'char'
+  | '"char"'
   | 'anyarray'
   | 'ARRAY'
   | 'bigint'

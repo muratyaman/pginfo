@@ -81,13 +81,21 @@ describe('newPgInfo', () => {
     expect(columnRecords.length > 0).to.eq(true);
   });
 
-  it('should get columns of users table in public schema', async() => {
+  it('should get columns of options table in public schema', async() => {
     const schema = pgInfo.schema('public');
-    const usersTable = schema.table('users');
-    const columnRecords = await usersTable.columns();
+    const optionsTable = schema.table('options');
+    const columnRecords = await optionsTable.columns();
     expect(columnRecords.length > 0).to.eq(true);
-    const idColumnRow = columnRecords.find(c => c.column_name === 'id');
+    const idColumnRow = columnRecords.find(c => c.column_name === 'uuid');
     expect(!!idColumnRow).to.eq(true);
+
+    const varcharArrDim1Row = columnRecords.find(c => c.column_name === 'varchar_arr_dim1');
+    expect(!!varcharArrDim1Row).to.eq(true);
+    expect(varcharArrDim1Row?.array_dimension).to.eq(1);
+
+    const intArrDim2Row = columnRecords.find(c => c.column_name === 'int_arr_dim2');
+    expect(!!intArrDim2Row).to.eq(true);
+    expect(intArrDim2Row?.array_dimension).to.eq(2);
   });
 
   it('should get attributes for all UDTs in public schema', async() => {
