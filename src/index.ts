@@ -32,16 +32,17 @@ ORDER BY table_schema, table_name;
 const sqlSelectColumns = `
 SELECT
   cols.*,
-  col_description(((table_schema || '.' || table_name)::regclass)::oid, ordinal_position) AS column_comment,
+  col_description(((cols.table_schema || '.' || cols.table_name)::regclass)::oid, ordinal_position) AS column_comment,
   arr.array_dimension
 FROM information_schema.columns AS cols
 LEFT JOIN (
-  SELECT c.oid, attname AS column_name, attndims AS array_dimension
+  SELECT c.relname AS table_name, a.attname AS column_name, attndims AS array_dimension
   FROM pg_class     c
-  JOIN pg_attribute a ON c.oid = attrelid
+  JOIN pg_namespace s ON c.relnamespace = s.oid
+  JOIN pg_attribute a on c.oid = attrelid AND a.attndims > 0
   JOIN pg_type      t on t.oid = atttypid
-  WHERE attndims > 0
-) AS arr ON arr.oid = (cols.table_name)::regclass AND cols.column_name = arr.column_name
+  WHERE c.relkind = 'r' AND s.nspname = $2
+) AS arr ON arr.table_name = cols.table_name AND cols.column_name = arr.column_name
 WHERE cols.table_catalog = $1
   AND cols.table_schema = $2
 ORDER BY cols.table_name, cols.column_name
@@ -50,19 +51,20 @@ ORDER BY cols.table_name, cols.column_name
 const sqlSelectColumnsByTable = `
 SELECT
   cols.*,
-  col_description(((table_schema || '.' || table_name)::regclass)::oid, ordinal_position) AS column_comment,
+  col_description(((cols.table_schema || '.' || cols.table_name)::regclass)::oid, ordinal_position) AS column_comment,
   arr.array_dimension
 FROM information_schema.columns AS cols
 LEFT JOIN (
-  SELECT c.oid, attname AS column_name, attndims AS array_dimension
+  SELECT c.relname AS table_name, a.attname AS column_name, a.attndims AS array_dimension
   FROM pg_class     c
-  JOIN pg_attribute a ON c.oid = attrelid
+  JOIN pg_namespace s ON c.relnamespace = s.oid
+  JOIN pg_attribute a on c.oid = attrelid AND a.attndims > 0
   JOIN pg_type      t on t.oid = atttypid
-  WHERE attndims > 0
-) AS arr ON arr.oid = (cols.table_name)::regclass AND cols.column_name = arr.column_name
-WHERE table_catalog = $1
-  AND table_schema = $2
-  AND table_name = $3
+  WHERE c.relkind = 'r' AND s.nspname = $2 AND c.relname = $3
+) AS arr ON arr.table_name = cols.table_name AND cols.column_name = arr.column_name
+WHERE cols.table_catalog = $1
+  AND cols.table_schema = $2
+  AND cols.table_name = $3
 ORDER BY cols.column_name
 `;
 
