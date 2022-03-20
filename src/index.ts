@@ -18,10 +18,11 @@ WHERE catalog_name = $1
 ORDER BY schema_name;
 `;
 
+// quoting table_name to avoid case-sensitivity issue on obj_description()
 const sqlSelectTables = `
 SELECT
   *,
-  obj_description((table_schema || '.' || table_name)::regclass) AS table_comment
+  obj_description((table_schema || '."' || table_name || '"')::regclass) AS table_comment
 FROM information_schema.tables
 WHERE table_catalog = $1
   AND table_schema = $2
@@ -40,10 +41,11 @@ JOIN pg_type t ON t.oid = atttypid
 WHERE c.relkind = 'r' AND s.nspname = $1
 `;
 
+// quoting table_name to avoid case-sensitivity issue on obj_description()
 const sqlSelectColumns = `
 SELECT
   cols.*,
-  col_description(((cols.table_schema || '.' || cols.table_name)::regclass)::oid, ordinal_position) AS column_comment,
+  col_description(((cols.table_schema || '."' || cols.table_name || '"')::regclass)::oid, ordinal_position) AS column_comment,
   null AS array_dimension -- to be appended
 FROM information_schema.columns AS cols
 WHERE cols.table_catalog = $1
@@ -51,10 +53,11 @@ WHERE cols.table_catalog = $1
 ORDER BY cols.table_name, cols.column_name
 `;
 
+// quoting table_name to avoid case-sensitivity issue on obj_description()
 const sqlSelectColumnsByTable = `
 SELECT
   cols.*,
-  col_description(((cols.table_schema || '.' || cols.table_name)::regclass)::oid, ordinal_position) AS column_comment,
+  col_description(((cols.table_schema || '."' || cols.table_name || '"')::regclass)::oid, ordinal_position) AS column_comment,
   null AS array_dimension -- to be appended
 FROM information_schema.columns AS cols
 WHERE cols.table_catalog = $1
