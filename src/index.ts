@@ -88,7 +88,9 @@ export const pgMsgDbConnError  = 'DB connection error';
 
 export class PgInfoService {
 
-  constructor(protected _db: Pool, public readonly dbName: string, protected _logger = console) {}
+  constructor(protected _db: Pool, public readonly dbName: string, protected _logger = console) {
+    if (dbName.trim() === '') throw new Error('invalid database name');
+  }
 
   async disconnect() {
     await this._db.end();

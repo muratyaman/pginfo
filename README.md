@@ -36,6 +36,8 @@ export interface PgSchema {
 # clone repo
 npm i
 npm run build
+# copy .env.sample as .env and edit settings
+# NOTE: tests require a PostgreSQL server
 npm run test
 npm run test:coverage
 ```
@@ -53,8 +55,9 @@ import { PgInfoService } from 'pgsqlinfo';
 main();
 
 async function main() {
-  const db = new Pool();
-  const pgInfo = new PgInfoService(db, PGDATABASE, console);
+  const dbName = process.env.PGDATABASE ?? '';
+  const db = new Pool(); // relying on env settings
+  const pgInfo = new PgInfoService(db, dbName, console);
 
   const schemaRecords = await pgInfo.schemata();
   console.log({ schemaRecords });

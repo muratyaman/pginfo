@@ -1,6 +1,6 @@
 {
   "name": "pgsqlinfo",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "TypeScript library to work with information schema of PostgreSQL",
   "main": "lib/index.js",
   "files": [

@@ -134,4 +134,14 @@ describe('newPgInfo', () => {
     expect(called).to.eq(1);
   });
 
+  it('constructor should throw error when db name is nil', async() => {
+    let error = null;
+    try {
+      const _ = new PgInfoService(new Pool(), '');
+    } catch (err) {
+      error = err;
+    }
+    expect(!!error).to.eq(true);
+  });
+
 });
