@@ -1,4 +1,12 @@
-import { Pool, PoolConfig } from 'pg';
+import { Pool } from 'pg';
+
+const sqlSelectSchemataAll = `
+SELECT
+  *
+FROM information_schema.schemata
+WHERE catalog_name = $1
+ORDER BY schema_name;
+`;
 
 const sqlSelectSchemata = `
 SELECT
@@ -8,15 +16,6 @@ WHERE catalog_name = $1
   AND schema_name <> 'information_schema'
   AND schema_name NOT LIKE 'pg_%'
 ORDER BY schema_name;
-`;
-
-const sqlSelectUserDefinedTypes = `
-SELECT
-*
-FROM information_schema.user_defined_types
-WHERE user_defined_type_catalog = $1
-  AND user_defined_type_schema = $2
-ORDER BY user_defined_type_name
 `;
 
 const sqlSelectTables = `
@@ -50,15 +49,46 @@ WHERE table_catalog = $1
 ORDER BY column_name
 `;
 
+const sqlSelectDomains = `
+select
+  *
+FROM information_schema.domains
+ORDER BY 1,2,3;
+`;
+
+const sqlSelectTypes = (catalog: string) => `
+select
+  *
+FROM ${catalog}.pg_type
+ORDER BY typname;
+`;
+
+// get UDTs
+const sqlSelectUserDefinedTypes = `
+SELECT
+*
+FROM information_schema.user_defined_types
+WHERE user_defined_type_catalog = $1
+  AND user_defined_type_schema = $2
+ORDER BY user_defined_type_name
+`;
+
+// details of composite UDTs
+const sqlSelectAttributes = `
+SELECT
+  *
+FROM information_schema.attributes
+WHERE udt_catalog = $1
+  AND udt_schema = $2
+ORDER BY udt_name, attribute_name
+`;
+
 export const pgMsgDbQueryError = 'DB query error';
 export const pgMsgDbConnError  = 'DB connection error';
 
 export class PgInfoService {
-  protected _db: Pool;
 
-  constructor(protected _dbConfig: PoolConfig, public readonly dbName: string, protected logger = console) {
-    this._db = new Pool(this._dbConfig);
-  }
+  constructor(protected _db: Pool, public readonly dbName: string, protected _logger = console) {}
 
   async disconnect() {
     await this._db.end();
@@ -75,17 +105,21 @@ export class PgInfoService {
         rows = result.rows;
       } catch (err) {
         dbErr = err;
-        this.logger.error(pgMsgDbQueryError, err);
+        this._logger.error(pgMsgDbQueryError, err);
       } finally {
         client.release();
       }
     } catch (err) {
       dbErr = err;
-      this.logger.error(pgMsgDbConnError, err);
+      this._logger.error(pgMsgDbConnError, err);
       throw err;
     }
     if (dbErr) throw dbErr;
     return rows;
+  }
+
+  async schemataAll(): Promise<PgSchema[]> {
+    return this.query<PgSchema>(sqlSelectSchemataAll, [this.dbName], 'schemataAll');
   }
 
   async schemata(): Promise<PgSchema[]> {
@@ -94,6 +128,21 @@ export class PgInfoService {
 
   schema(schemaName: string): PgSchemaService {
     return new PgSchemaService(this, schemaName);
+  }
+
+  async types(catalog = 'pg_catalog'): Promise<PgType[]> {
+    let isValidCatalog = catalog === 'pg_catalog';
+    if (!isValidCatalog) {
+      const schemata = await this.schemataAll();
+      const schemaFound = schemata.find(s => s.schema_name === catalog);
+      isValidCatalog = !!schemaFound;
+    }
+    if (!isValidCatalog) throw new Error(`invalid catalog "${catalog}" to find types`);
+    return this.query<PgType>(sqlSelectTypes(catalog), [], 'types_in_' + catalog);
+  }
+
+  async domains(): Promise<PgDomain[]> {
+    return this.query<PgDomain>(sqlSelectDomains, [], 'domains');
   }
 }
 
@@ -110,6 +159,10 @@ export class PgSchemaService {
 
   async columns(): Promise<PgColumn[]> {
     return this._pg.query<PgColumn>(sqlSelectColumns, [this._pg.dbName, this.schemaName], 'columns');
+  }
+
+  async attributes(): Promise<PgAttribute[]> {
+    return this._pg.query<PgAttribute>(sqlSelectAttributes, [this._pg.dbName, this.schemaName], 'attributes');
   }
 
   table(tableName: string) {
@@ -211,6 +264,84 @@ export interface PgColumn {
   column_comment: string | null;
 }
 
+// @see https://www.postgresql.org/docs/current/infoschema-domains.html
+export interface PgDomain {
+  character_maximum_length: number | null; // int4
+  character_octet_length:   number | null; // int4
+  character_set_catalog:    string | null; // name
+  character_set_name:       string | null; // name
+  character_set_schema:     string | null; // name
+  collation_catalog:        string | null; // name
+  collation_name:           string | null; // name
+  collation_schema:         string | null; // name
+  data_type:                string | null; // varchar
+  datetime_precision:       number | null; // int4
+  domain_catalog:           string | null; // name
+  domain_default:           string | null; // varchar
+  domain_name:              string | null; // name
+  domain_schema:            string | null; // name
+  dtd_identifier:           string | null; // name
+  interval_precision:       number | null; // int4
+  interval_type:            string | null; // varchar
+  maximum_cardinality:      number | null; // int4
+  numeric_precision:        number | null; // int4
+  numeric_precision_radix:  number | null; // int4
+  numeric_scale:            string | null; // int4
+  scope_catalog:            string | null; // name
+  scope_name:               string | null; // name
+  scope_schema:             string | null; // name
+  udt_catalog:              string | null; // name
+  udt_name:                 string | null; // name
+  udt_schema:               string | null; // name
+}
+
+// @see https://www.postgresql.org/docs/current/catalog-pg-type.html
+export interface PgType {
+  oid:            string | null; // oid
+  typacl:         string | null; // _aclitem ARRAY
+  typalign:       string | null; // char
+  typanalyze:     any; // regproc
+  typarray:       string | null; // oid
+  typbasetype:    string | null; // oid
+  typbyval:       boolean | null; // boolean
+  typcategory:    string | null; // char
+  typcollation:   string | null; // oid
+  typdefault:     string | null; // text
+  typdefaultbin:  any; // pg_node_tree
+  typdelim:       string | null; // char
+  typelem:        string | null; // oid
+  typinput:       any; // regproc
+  typisdefined:   boolean | null; // boolean
+  typispreferred: boolean | null; // boolean
+  typlen:         number | null; // smallint
+  typmodin:       any; // regproc
+  typmodout:      any; // regproc
+  typname:        string | null; // name
+  typnamespace:   string | null; // oid
+  typndims:       number | null; // integer
+  typnotnull:     boolean | null; // boolean
+  typoutput:      any; // regproc
+  typowner:       string | null; // oid
+  typreceive:     any; // regproc
+  typrelid:       string | null; // oid
+  typsend:        any; // regproc
+  typstorage:     string | null; // char
+  typsubscript:   any; // regproc
+  typtype:        PgTypeTypeEnum | PgTypeType | string | null; // char 1
+  typtypmod:      number | null; // integer
+}
+
+export type PgTypeType = 'b' | 'c' | 'd' | 'e' | 'p' | 'r' | 'm';
+export enum PgTypeTypeEnum {
+  b = 'b', // base
+  c = 'c', // composite
+  d = 'd', // domain
+  e = 'e', // enum
+  m = 'm', // multi-range
+  p = 'p', // pseudo
+  r = 'r', // range
+}
+
 // @see https://www.postgresql.org/docs/current/infoschema-user-defined-types.html
 export interface PgUserDefinedType {
   character_maximum_length:   number | null;
@@ -225,7 +356,7 @@ export interface PgUserDefinedType {
   datetime_precision:         number | null;
   interval_precision:         number | null;
   interval_type:              string | null;
-  is_final:                   string | null; // max 3
+  is_final:                   PgYesOrNoEnum | PgYesOrNoType | string | null; // max 3
   is_instantiable:            PgYesOrNoEnum | PgYesOrNoType | string | null; // max 3
   numeric_precision:          number | null;
   numeric_precision_radix:    number | null;
@@ -242,6 +373,49 @@ export interface PgUserDefinedType {
   user_defined_type_category: 'STRUCTURED' | string | null; // Currently always 'STRUCTURED'
   user_defined_type_name:     string | null;
   user_defined_type_schema:   string | null;
+}
+
+// @see https://www.postgresql.org/docs/current/infoschema-attributes.html
+export interface PgAttribute {
+  attribute_default:              string | null;
+  attribute_name:                 string | null;
+  attribute_udt_catalog:          string | null;
+  attribute_udt_name:             string | null;
+  attribute_udt_schema:           string | null;
+  character_maximum_length:       number | null;
+  character_octet_length:         number | null;
+  character_set_catalog:          string | null;
+  character_set_name:             string | null;
+  character_set_schema:           string | null;
+  collation_catalog:              string | null;
+  collation_name:                 string | null;
+  collation_schema:               string | null;
+  data_type:                      string | null;
+  datetime_precision:             number | null;
+  dtd_identifier:                 string | null;
+  interval_precision:             number | null;
+  interval_type:                  string | null;
+  is_derived_reference_attribute: PgYesOrNoEnum | PgYesOrNoType | string | null; // max 3
+  is_nullable:                    PgYesOrNoEnum | PgYesOrNoType | string | null; // max 3
+  maximum_cardinality:            number | null;
+  numeric_precision:              number | null;
+  numeric_precision_radix:        number | null;
+  numeric_scale:                  number | null;
+  ordinal_position:               number | null;
+  scope_catalog:                  string | null;
+  scope_name:                     string | null;
+  scope_schema:                   string | null;
+  udt_catalog:                    string | null;
+  udt_name:                       string | null;
+  udt_schema:                     string | null;
+}
+
+// @see https://www.postgresql.org/docs/8.4/catalog-pg-enum.html
+export interface PgEnum {
+  enumlabel:     string;
+  enumsortorder: number; // float4
+  enumtypid:     string; // ==> parent UDT kind enum
+  oid:           string;
 }
 
 export type PgTableTypeType = 'BASE TABLE' | 'VIEW' | 'FOREIGN' | 'LOCAL TEMPORARY';

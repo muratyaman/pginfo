@@ -1,52 +1,99 @@
 import { expect } from 'chai';
 import dotenv from 'dotenv';
+import { Pool } from 'pg';
 import { PgInfoService } from '../src';
 
 dotenv.config();
 const { PGDATABASE = 'demo' } = process.env;
 
 describe('newPgInfo', () => {
+
+  const mockLogger = {
+    ...console,
+    error: () => {
+      // ignore
+    },
+  };
+
   // relying on correct env settings; see .env.sample
-  const pgInfo = new PgInfoService({}, PGDATABASE);
+  const pgInfo = new PgInfoService(new Pool(), PGDATABASE);
 
   after(async () => {
     await pgInfo.disconnect();
   });
   
   it('should get schemata', async() => {
-    const schemaRows = await pgInfo.schemata();
-    expect(schemaRows.length > 0).to.eq(true);
-    const publicSchemaRow = schemaRows.find(s => s.schema_name === 'public');
+    const schemaRecords = await pgInfo.schemata();
+    expect(schemaRecords.length > 0).to.eq(true);
+    const publicSchemaRow = schemaRecords.find(s => s.schema_name === 'public');
     expect(!!publicSchemaRow).to.eq(true);
+  });
+
+  it('should get domains', async() => {
+    const rows = await pgInfo.domains();
+    expect(rows.length > 0).to.eq(true);
+  });
+
+  it('should get types in pg_catalog', async() => {
+    const typeRows = await pgInfo.types();
+    expect(typeRows.length > 0).to.eq(true);
+  });
+
+  it('should throw error when getting types in information_schema', async() => {
+    const pgInfoErr = new PgInfoService(new Pool(), PGDATABASE, mockLogger);
+    let error = null;
+    try {
+      await pgInfoErr.types('information_schema');
+    } catch (err) {
+      error = err;
+    }
+    expect(!!error).to.eq(true);
+  });
+
+  it('should throw error when getting types in invalid_schema', async() => {
+    const pgInfoErr = new PgInfoService(new Pool(), PGDATABASE, mockLogger);
+    let error = null;
+    try {
+      await pgInfoErr.types('invalid_schema');
+    } catch (err) {
+      error = err;
+    }
+    expect(!!error).to.eq(true);
   });
 
   it('should get tables in public schema', async() => {
     const schema = pgInfo.schema('public');
-    const tableRows = await schema.tables();
-    expect(tableRows.length > 0).to.eq(true);
-    const usersTableRow = tableRows.find(t => t.table_name === 'users');
+    const tableRecords = await schema.tables();
+    expect(tableRecords.length > 0).to.eq(true);
+    const usersTableRow = tableRecords.find(t => t.table_name === 'users');
     expect(!!usersTableRow).to.eq(true);
   });
 
   it('should get columns for all user defined types in public schema', async() => {
     const schema = pgInfo.schema('public');
-    const udtRows = await schema.userDefinedTypes();
-    expect(udtRows.length > 0).to.eq(true);
+    const udtRecords = await schema.userDefinedTypes();
+    expect(udtRecords.length > 0).to.eq(true);
   });
 
   it('should get columns for all tables in public schema', async() => {
     const schema = pgInfo.schema('public');
-    const columnRows = await schema.columns();
-    expect(columnRows.length > 0).to.eq(true);
+    const columnRecords = await schema.columns();
+    expect(columnRecords.length > 0).to.eq(true);
   });
 
   it('should get columns of users table in public schema', async() => {
     const schema = pgInfo.schema('public');
     const usersTable = schema.table('users');
-    const columnRows = await usersTable.columns();
-    expect(columnRows.length > 0).to.eq(true);
-    const idColumnRow = columnRows.find(c => c.column_name === 'id');
+    const columnRecords = await usersTable.columns();
+    expect(columnRecords.length > 0).to.eq(true);
+    const idColumnRow = columnRecords.find(c => c.column_name === 'id');
     expect(!!idColumnRow).to.eq(true);
+  });
+
+  it('should get attributes for all UDTs in public schema', async() => {
+    const schema = pgInfo.schema('public');
+    const attributesRecords = await schema.attributes();
+    expect(attributesRecords.length > 0).to.eq(true);
   });
 
   it('should handle connection issues', async() => {
@@ -57,10 +104,10 @@ describe('newPgInfo', () => {
         errMsg = msg;
         called++;
       }
-    }
-    const pgInfo2 = new PgInfoService({ database: 'nodb', password: 'incorrect' }, 'nodb', logger);
+    };
+    const pgInfo2 = new PgInfoService(new Pool({ database: 'nodb', password: 'incorrect' }), 'nodb', logger);
     try {
-      const _ignore = await pgInfo2.schemata();
+      await pgInfo2.schemata();
     } catch (err) {
       // todo
     }
@@ -77,7 +124,7 @@ describe('newPgInfo', () => {
         called++;
       }
     }
-    const pgInfo3 = new PgInfoService({}, PGDATABASE, logger);
+    const pgInfo3 = new PgInfoService(new Pool({}), PGDATABASE, logger);
     try {
       const _ignore = await pgInfo3.query('SELECT * FROM no_table');
     } catch (err) {

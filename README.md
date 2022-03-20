@@ -8,7 +8,9 @@ TypeScript models have been prepared based on the following links:
 * https://www.postgresql.org/docs/current/infoschema-schemata.html
 * https://www.postgresql.org/docs/current/infoschema-tables.html
 * https://www.postgresql.org/docs/current/infoschema-columns.html
+* https://www.postgresql.org/docs/current/infoschema-domains.html
 * https://www.postgresql.org/docs/current/infoschema-user-defined-types.html
+* https://www.postgresql.org/docs/current/infoschema-attributes.html
 
 such as:
 
@@ -54,18 +56,18 @@ async function main() {
   const db = new Pool();
   const pgInfo = new PgInfoService(db, PGDATABASE, console);
 
-  const schemaRows = await pgInfo.schemata();
-  console.log({ schemaRows });
+  const schemaRecords = await pgInfo.schemata();
+  console.log({ schemaRecords });
 
   const schema = pgInfo.schema('public');
-  const tableRows = await schema.tables();
-  console.log({ tableRows });
+  const tableRecords = await schema.tables();
+  console.log({ tableRecords });
 
   // all columns of all tables
-  // const columnRows = await schema.columns();
+  // const columnRecords = await schema.columns();
 
   const usersTable = schema.table('users');
-  const columnRowsOfUsersTable = await usersTable.columns();
-  console.log({ columnRowsOfUsersTable });
+  const columnRecordsOfUsersTable = await usersTable.columns();
+  console.log({ columnRecordsOfUsersTable });
 }
 ```
